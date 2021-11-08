@@ -10,19 +10,25 @@ from urllib.parse import urljoin, urlunparse, urlsplit, urlunsplit
 
 import re
 from urllib.parse import urlparse
+from urllib.parse import quote, unquote, urlsplit
 from urllib.request import urlopen, Request
 from urllib.robotparser import RobotFileParser
+from urllib.error import HTTPError
+from urllib.error import URLError
 from datetime import datetime
 
 import mimetypes
 import os
+import sys
+if sys.version_info[0] >= 3:
+    unicode = str
 
 class IllegalArgumentError(ValueError):
 	pass
 
 class Crawler:
 
-	MAX_URLS_PER_SITEMAP = 50000
+	MAX_URLS_PER_SITEMAP = 100
 
 	# Variables
 	parserobots = False
@@ -78,6 +84,7 @@ class Crawler:
 		self.debug		= debug
 		self.verbose    = verbose
 		self.images     = images
+		self.iframes 	= iframes
 		self.auth       = auth
 		self.as_index   = as_index
 
@@ -162,14 +169,28 @@ class Crawler:
 		logging.debug('all crawl tasks have completed nicely')
 		return
 
+	def _iri2uri(self, iri):
+		"""
+		Convert an IRI to a URI (Python 3).
+		"""
+		uri = ''
+		if isinstance(iri, str):
+			(scheme, netloc, path, query, fragment) = urlsplit(iri)
+			scheme = quote(scheme)
+			netloc = netloc.encode('idna').decode('utf-8')
+			path = quote(path)
+			query = quote(query)
+			fragment = quote(fragment)
+			uri = urlunsplit((scheme, netloc, path, query, fragment))
 
+		return uri
 
 	def __crawl(self, current_url):
 		url = urlparse(current_url)
 		logging.info("Crawling #{}: {}".format(self.num_crawled, url.geturl()))
 		self.num_crawled += 1
-
-		request = Request(current_url, headers={"User-Agent": config.crawler_user_agent})
+		final_url = self._iri2uri(current_url)
+		request = Request(final_url, headers={"User-Agent": config.crawler_user_agent})
 
 		if self.auth:
 			base64string = base64.b64encode(bytes(f'{config.username}:{config.password}', 'ascii'))
@@ -180,7 +201,7 @@ class Crawler:
 		if not url.path.endswith(self.not_parseable_resources):
 			try:
 				response = urlopen(request)
-			except SystemExit as e:
+			except (HTTPError, URLError, SystemExit) as e:
 				if hasattr(e,'code'):
 					if e.code in self.response_code:
 						self.response_code[e.code]+=1
@@ -227,6 +248,30 @@ class Crawler:
 			# the link to the sitemap
 			msg = "".encode( )
 			date = None
+
+		# iframe sitema enabled ? 
+		iframe_list = ""
+		if self.iframes:
+			# Search for images in the current page.
+			iframes = self.iframeregex.findall(msg)
+			for iframe_link  in list(set(iframes)):
+				iframe_link = iframe_link.decode("utf-8", errors="ignore")
+
+				# Ignore iframe if path is in the exclude_url list
+				if not self.exclude_url(iframe_link):
+					continue
+				
+				# Test if iframe content as been already seen and not present in the
+				# robot file
+				if self.can_fetch(iframe_link):
+					logging.debug("Found iframe : {0}".format(iframe_link))
+					iframe_list = "{0}<iframe:iframe><iframe:loc>{1}</iframe:loc></iframe:iframe>".format(iframe_list, self.htmlspecialchars(iframe_link))
+		# Last mod fetched ?
+		lastmod = ""
+		if date:
+			lastmod = "<lastmod>"+date.strftime('%Y-%m-%dT%H:%M:%S+00:00')+"</lastmod>"
+		url_string = "<url><loc>"+self.htmlspecialchars(url.geturl())+"</loc>" + lastmod + iframe_list + "</url>"
+		self.url_strings_to_output.append(url_string)
 
 		# Image sitemap enabled ?
 		image_list = ""
@@ -336,6 +381,9 @@ class Crawler:
 			if not self.exclude_url(link):
 				self.exclude_link(link)
 				self.nb_exclude+=1
+				continue
+			
+			if self.nb_url >= self.MAX_URLS_PER_SITEMAP:
 				continue
 
 			self.urls_to_crawl.add(link)

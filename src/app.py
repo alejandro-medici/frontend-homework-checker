@@ -9,6 +9,7 @@ from urllib.request import Request
 from urllib.request import urlopen
 from urllib.parse import urlencode
 from urllib.parse import quote
+from urllib.parse import urlparse
 from urllib.error import URLError, HTTPError
 import os
 import cssutils
@@ -16,7 +17,7 @@ from utils.helpers import searchFlagInResources, searchFlagInText
 from utils.helpers import CHARS
 from utils.helpers import random_string_generator, random_sql_injection
 from utils.crawler import Crawler
-
+import csv
 from html import escape
 
 BASE_URL = 'https://unruffled-kilby-c5894d.netlify.app/'
@@ -62,20 +63,21 @@ def hackattemptInput(url, name):
         searchFlagInText(response.text, flags_list)
 
 
-def buildXMLSiteMap():
+def buildXMLSiteMap(url=BASE_URL, output_file="sitemap.xml"):
     """
     I'm going to build the XMLSiteMap
     """
     dict_arg = {
-        "domain": BASE_URL,
+        "domain": url,
         "skipext":	[
             "pdf",
             "xml"
         ],
-        "parserobots": True,
+        "parserobots": False,
         "images": False,
+        "iframes": True,
         "debug": True,
-        "output": "sitemap.xml",
+        "output": output_file,
         "exclude":	[
             "action=edit"
         ]
@@ -87,19 +89,31 @@ def buildXMLSiteMap():
 
 
 if __name__ == "__main__":
-    url = BASE_URL
 
-    buildXMLSiteMap()
+    path = "input/"
 
-    # searchIndexingpages()
+    with os.scandir(path) as entries:
+        for entry in entries:
+            with open(entry) as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=",")
+                lines = 0
+                githubRepos = 0
+                hosted = 0
+                for row in csv_reader:
+                    if lines == 0:
+                        print("columns name are : ".join(row))
+                    else:
+                        domain = urlparse(row[7]).netloc
+                        if ( domain != 'github.com'):
+                            print("row data is: " + row[7])
+                            buildXMLSiteMap(row[7], output_file=os.path.join('output', row[1] + '.xml') )
+                            hosted +=1
+                        else:
+                            githubRepos +=1
+                      
+                    lines +=1
+    print("Total projects: " + str(hosted + githubRepos))
+    print("Hosted projects: " + str(hosted))
+    print("Github projects: " + str(githubRepos))
 
-    #url = BASE_URL + '/' + 'favicon.ico'
-    # searchFlagInResources(url)
-
-    # based on previous assignment
-    #url = BASE_URL + '/' + 'background.png'
-    # searchFlagInResources(url)
-
-    text_file = open(foundFlagsFile, "w")
-    text_file.writelines(flags_list)
-    text_file.close()
+   
