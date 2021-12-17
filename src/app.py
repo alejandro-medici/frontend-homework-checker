@@ -20,7 +20,7 @@ from utils.crawler import Crawler
 import csv
 from html import escape
 
-BASE_URL = 'https://unruffled-kilby-c5894d.netlify.app/'
+BASE_URL = 'https://aulasvirtuales.bue.edu.ar/'
 
 foundFlagsFile = 'moderate3_flags_found.txt'
 flags_list = []
@@ -89,6 +89,10 @@ def buildXMLSiteMap(url=BASE_URL, output_file="sitemap.xml"):
 
 
 if __name__ == "__main__":
+
+    buildXMLSiteMap(BASE_URL)
+    ##, output_file=os.path.join('output', "data" + '.xml') )
+                    
 
     path = "input/"
 
